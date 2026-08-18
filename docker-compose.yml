@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: beacon-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: beacon
+      POSTGRES_PASSWORD: beacon
+      POSTGRES_DB: beacon
+    ports:
+      # 5433 no host para não conflitar com um Postgres local na 5432.
+      - "5433:5432"
+    volumes:
+      - beacon-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U beacon -d beacon"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    command:
+      # Analytics faz varreduras grandes: vale a pena dar memória de trabalho
+      # ao planner em vez de deixar o default de 4MB derrubar tudo para disco.
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - work_mem=32MB
+      - -c
+      - max_parallel_workers_per_gather=4
+
+volumes:
+  beacon-pgdata:

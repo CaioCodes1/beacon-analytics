@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # Os testes são de integração contra um Postgres real. Trocá-lo por um mock
+    # invalidaria justamente o que eles verificam: date_trunc, funções de janela
+    # e fronteiras de fuso são executados pelo banco, não pela aplicação.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: beacon
+          POSTGRES_PASSWORD: beacon
+          POSTGRES_DB: beacon
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U beacon"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://beacon:beacon@localhost:5433/beacon
+      TEST_DATABASE_URL: postgres://beacon:beacon@localhost:5433/beacon_test
+      JWT_SECRET: chave-de-ci-com-pelo-menos-32-caracteres-ok
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Verificação de tipos
+        run: npm run typecheck
+
+      - name: Migrations
+        run: npm run db:migrate
+
+      - name: Testes
+        run: npm test
+
+      - name: Build
+        run: npm run build
