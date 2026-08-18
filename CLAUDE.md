@@ -88,8 +88,9 @@ está sendo testado.
 
 - README escrito em 18/08/2026 (era a pendência mais visível). Código, testes,
   docs técnicos, Dockerfile e CI já estavam completos.
-- **Ainda não tem repositório git** — é o único projeto do workspace sem `.git`;
-  nada foi commitado até hoje.
+- Repositório criado em 18/08/2026: `git init -b main` + commit inicial
+  `75e7389` com 47 arquivos. **Sem remoto** — falta criar o repo no GitHub;
+  nesta máquina não há credenciais nem `gh` para fazer isso automaticamente.
 - A tabela de resultados de `docs/PERFORMANCE.md` está com `_a medir_`: o
   `npm run bench` nunca rodou sobre a massa do seed. Depende de Node e Docker
   disponíveis na máquina.
