@@ -86,13 +86,11 @@ está sendo testado.
 
 ## Estado / pendências
 
-- README escrito em 18/08/2026 (era a pendência mais visível). Código, testes,
-  docs técnicos, Dockerfile e CI já estavam completos.
-- Repositório criado em 18/08/2026: `git init -b main` + commit inicial
-  `75e7389` com 47 arquivos. O remoto já aponta para
-  `github.com/CaioCodes1/beacon-analytics`, mas **o repositório ainda não existe
-  lá** — falta criá-lo e dar o primeiro `push`;
-  nesta máquina não há credenciais nem `gh` para fazer isso automaticamente.
+- README escrito em 18/08/2026 — era a pendência mais visível. Código, testes,
+  docs técnicos, Dockerfile e CI já estavam completos antes disso.
+- Repositório criado e publicado em 18/08/2026 em
+  `github.com/CaioCodes1/beacon-analytics` (público), com 47 arquivos
+  rastreados. Local e remoto em dia.
 - A tabela de resultados de `docs/PERFORMANCE.md` está com `_a medir_`: o
-  `npm run bench` nunca rodou sobre a massa do seed. Depende de Node e Docker
-  disponíveis na máquina.
+  `npm run bench` nunca rodou sobre a massa do seed. Depende de Node e Docker,
+  que não estão instalados nesta máquina.
