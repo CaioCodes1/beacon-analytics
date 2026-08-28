@@ -198,6 +198,30 @@ export const dailyEventRollup = pgTable(
   ],
 );
 
+/**
+ * Quais dias já foram processados pela pré-agregação.
+ *
+ * Existe porque a ausência de uma linha em `daily_event_rollup` é ambígua:
+ * pode ser "este dia nunca foi processado" ou "este dia foi processado e não
+ * teve nenhum evento". As duas pedem respostas opostas — a primeira exige cair
+ * para a tabela bruta, a segunda pode responder zero com confiança.
+ *
+ * `refresh_daily_rollup` grava aqui a janela inteira que processou, inclusive
+ * os dias vazios, e é isso que permite ao relatório saber se pode confiar no
+ * caminho rápido.
+ */
+export const rollupCoverage = pgTable(
+  'rollup_coverage',
+  {
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    day: date('day').notNull(),
+    refreshedAt: timestamp('refreshed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.projectId, table.day] })],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Project = typeof projects.$inferSelect;

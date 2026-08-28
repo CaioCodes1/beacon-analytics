@@ -14,7 +14,7 @@ export async function buildTestApp(): Promise<FastifyInstance> {
  */
 export async function resetDatabase(): Promise<void> {
   await pool.query(
-    'TRUNCATE events, daily_event_rollup, api_keys, projects, users RESTART IDENTITY CASCADE',
+    'TRUNCATE events, daily_event_rollup, rollup_coverage, api_keys, projects, users RESTART IDENTITY CASCADE',
   );
 }
 
