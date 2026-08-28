@@ -5,7 +5,7 @@ perguntas sobre eles — quantos visitantes únicos, como a conversão caiu ao l
 do funil, quantos voltaram na semana seguinte.
 
 <p>
-  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white" />
+  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-22+-339933?logo=node.js&logoColor=white" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" />
   <img alt="Fastify" src="https://img.shields.io/badge/Fastify-5-000000?logo=fastify&logoColor=white" />
   <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white" />
@@ -75,7 +75,7 @@ concentrado num arquivo só (`src/modules/reports/reports.queries.ts`).
 
 | Camada | Escolha | Por quê |
 |---|---|---|
-| Runtime | Node 20+, TypeScript, ESM | Tipos onde mais importam: no formato dos eventos e dos filtros |
+| Runtime | Node 22+, TypeScript, ESM | Tipos onde mais importam: no formato dos eventos e dos filtros |
 | HTTP | Fastify 5 | O schema faz parte da rota — a mesma definição valida a requisição e gera o OpenAPI |
 | Validação | Zod, via `fastify-type-provider-zod` | Um schema só; `request.query` já chega tipado no handler |
 | Banco | PostgreSQL 16 | Funções de janela, `date_trunc` com fuso, JSONB com índice GIN |
@@ -283,7 +283,7 @@ curl -G http://localhost:3333/v1/projects/$PROJECT_ID/reports/funnel \
 
 ## Como executar
 
-Pré-requisitos: **Node 20+** e **Docker** (para o Postgres).
+Pré-requisitos: **Node 22+** e **Docker** (para o Postgres).
 
 ```bash
 cp .env.example .env      # ajuste JWT_SECRET: openssl rand -hex 32
