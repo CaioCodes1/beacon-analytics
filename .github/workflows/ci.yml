@@ -35,10 +35,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Node 22: alguns pacotes da cadeia do @scalar/fastify-api-reference
+      # declaram engines >= 22, e rodar abaixo disso enche o log de EBADENGINE.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
+
+      # O npm precisa ser o MESMO que gerou o package-lock.json.
+      #
+      # O lockfile deste projeto e escrito pelo npm 11. O npm 10 que vem com a
+      # imagem do runner le a arvore de outro jeito e o `npm ci` falha de duas
+      # formas opostas, dependendo de como o lockfile foi gerado: ou acusa
+      # EBADPLATFORM tentando instalar o binario de AIX/PowerPC num runner
+      # linux/x64, ou acusa "Missing from lock file" para os mesmos pacotes.
+      #
+      # Nenhum estado do lockfile agrada as duas versoes ao mesmo tempo, entao
+      # a correcao e alinhar as versoes em vez de remendar o arquivo.
+      - run: npm install -g npm@11
 
       - run: npm ci
 
