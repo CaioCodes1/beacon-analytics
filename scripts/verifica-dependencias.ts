@@ -33,7 +33,7 @@ let rejeitou = false;
 try { app.jwt.verify(token.slice(0, -3) + 'xxx'); } catch { rejeitou = true; }
 ok('token adulterado e rejeitado', rejeitou);
 let semAlg = false;
-const [h, p] = token.split('.');
+const p = token.split('.')[1];
 const noneToken = Buffer.from('{"alg":"none","typ":"JWT"}').toString('base64url') + '.' + p + '.';
 try { app.jwt.verify(noneToken); } catch { semAlg = true; }
 ok('token com alg:none e rejeitado', semAlg);

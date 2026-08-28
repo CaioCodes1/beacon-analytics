@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, InjectOptions } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { buildTestApp, resetDatabase, createAccount, auth, type TestAccount } from './helpers.js';
 import { db, closeDatabase } from '../src/db/index.js';
@@ -22,8 +22,13 @@ beforeEach(async () => {
   account = await createAccount(app);
 });
 
-function ingest(payload: unknown, key = account.apiKey) {
-  return app.inject({ method: 'POST', url: '/v1/events', headers: auth(key), payload });
+/**
+ * O `await` aqui não é decorativo. Sem ele, `app.inject` devolve o tipo
+ * encadeável (`Promise<Response> & Chain`) em vez da resposta, e quem chamar
+ * este helper perde `.statusCode` e `.json()` na checagem de tipos.
+ */
+async function ingest(payload: InjectOptions['payload'], key = account.apiKey) {
+  return await app.inject({ method: 'POST', url: '/v1/events', headers: auth(key), payload });
 }
 
 describe('ingestão de eventos', () => {
