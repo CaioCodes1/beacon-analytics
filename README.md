@@ -37,6 +37,7 @@ do funil, quantos voltaram na semana seguinte.
 - [Variáveis de ambiente](#variáveis-de-ambiente)
 - [Estrutura de pastas](#estrutura-de-pastas)
 - [Testes](#testes)
+- [Dependências e segurança](#dependências-e-segurança)
 - [Performance](#performance)
 - [Decisões e trade-offs](#decisões-e-trade-offs)
 - [Melhorias futuras](#melhorias-futuras)
@@ -351,6 +352,61 @@ consulta — falha intermitente, o pior tipo de teste que existe.
 
 O CI (`.github/workflows/ci.yml`) sobe um Postgres 16 como serviço e roda a mesma
 suíte a cada push e pull request.
+
+## Dependências e segurança
+
+```bash
+npm audit              # estado atual
+npm run verifica:deps  # confere que as trocas de versão não mudaram o comportamento
+```
+
+Uma auditoria encontrou **três falhas críticas e duas altas**, todas resolvidas
+por atualizações de versão maior:
+
+| Pacote | De | Para | O que corrigiu |
+|---|---|---|---|
+| `@fastify/jwt` | 9.x | 10.2.2 | Seis falhas no `fast-jwt`, entre elas **bypass de autenticação** com segredo HMAC vazio, confusão de algoritmo com chave RSA prefixada por espaço e vazamento de claims entre tokens por colisão de cache |
+| `drizzle-orm` | 0.38.x | 0.45.2 | **SQL injection** por escape incorreto de identificadores |
+| `vitest` | 2.x | 4.1.11 | Leitura e execução de arquivo arbitrário quando o servidor de UI está escutando; path traversal no Vite |
+
+### Como as trocas foram verificadas
+
+Atualização de versão maior não é troca de número: `npm audit` diz que a falha
+sumiu, não que o código continua funcionando. Como a suíte de integração exige
+um Postgres no ar, `scripts/verifica-dependencias.ts` cobre o essencial sem
+banco nenhum — ele registra o plugin de JWT de verdade e usa `.toSQL()` do
+Drizzle para inspecionar o SQL gerado:
+
+- token assinado é verificado e devolve o mesmo payload;
+- token adulterado é rejeitado;
+- token com `alg: none` é rejeitado;
+- identificadores saem entre aspas duplas;
+- valores saem como `$1`, nunca interpolados no texto da consulta;
+- um payload de injeção (`'; DROP TABLE users; --`) vira parâmetro, e a string
+  não aparece em lugar nenhum do SQL.
+
+O último item é o que fecha o ciclo: era exatamente a geração de identificadores
+que estava vulnerável, e é ela que o teste inspeciona.
+
+### O que ficou em aberto, de propósito
+
+Sobraram **quatro falhas moderadas**, todas a mesma cadeia:
+`drizzle-kit` → `@esbuild-kit/esm-loader` → `esbuild`.
+
+A correção que o `npm audit fix --force` propõe é **rebaixar** o `drizzle-kit`
+de 0.31 para 0.18 — quinze versões para trás, quebrando a geração de migrations.
+
+Não vale a pena, por três motivos:
+
+1. `drizzle-kit` é dependência de desenvolvimento; não vai para produção;
+2. a falha do `esbuild` só existe com o **servidor de desenvolvimento** dele no
+   ar, e o `drizzle-kit` usa o `esbuild` apenas para empacotar o arquivo de
+   configuração — nunca sobe servidor;
+3. a cadeia vem de cima: não há versão do `drizzle-kit` que a resolva hoje.
+
+Saber quando **não** aplicar a correção sugerida faz parte do trabalho. Um
+`npm audit` limpo obtido às custas de quinze versões de regressão seria um
+número melhor e um projeto pior.
 
 ## Performance
 
