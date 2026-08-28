@@ -199,13 +199,65 @@ export interface TimeseriesResult {
  * Não cabendo, a consulta vai para a tabela bruta. A resposta é sempre correta;
  * o que muda é o tempo.
  */
-function canUseRollup(query: TimeseriesQuery & Scoped): boolean {
+/**
+ * O rollup só entra em cena se puder responder CERTO.
+ *
+ * São duas perguntas independentes, e antes só a primeira era feita.
+ *
+ * A primeira é sobre o FORMATO da pergunta: a pré-agregação é gravada por dia,
+ * em UTC, e guarda únicos por dia. Fora dessas condições ela mentiria por
+ * construção — somar únicos de dias diferentes conta duas vezes quem voltou, e
+ * um fuso diferente move a fronteira do dia.
+ *
+ * A segunda é sobre os DADOS: o rollup tem esse período processado? Ela faltava,
+ * e a consequência era grave. Um rollup vazio, ou simplesmente mais antigo que
+ * a pergunta, devolvia zeros — sem erro e sem aviso. O gráfico mostrava um
+ * período sem tráfego que na verdade estava cheio de eventos.
+ *
+ * `rollup_coverage` responde a segunda pergunta. Olhar os dias presentes em
+ * `daily_event_rollup` não serviria: a ausência de linha lá é ambígua entre
+ * "nunca processado" e "processado e vazio", e essas duas situações pedem
+ * respostas opostas.
+ *
+ * A dúvida sempre cai para a tabela bruta: mais lento e certo é melhor que
+ * rápido e errado.
+ */
+async function canUseRollup(query: TimeseriesQuery & Scoped): Promise<boolean> {
   if (query.interval === 'hour') return false;
   if (query.timezone !== 'UTC') return false;
   if (query.metric === 'sessions') return false;
   if (query.metric === 'visitors' && query.interval !== 'day') return false;
   if (query.path || query.browser || query.os || query.properties) return false;
-  return true;
+
+  return rollupCoversRange(query);
+}
+
+/**
+ * Todo dia do intervalo pedido está registrado como processado?
+ *
+ * A régua é a mesma do relatório: `to` é exclusivo, então o último dia sai de
+ * `to` menos um microssegundo. Sem isso, um intervalo terminando na virada
+ * exata do dia exigiria cobertura de um dia a mais do que ele de fato lê.
+ */
+async function rollupCoversRange(query: TimeseriesQuery & Scoped): Promise<boolean> {
+  const [row] = await rows<{ covered: boolean }>(sql`
+    SELECT NOT EXISTS (
+      SELECT 1
+      FROM generate_series(
+        (${query.from}::timestamptz AT TIME ZONE 'UTC')::date,
+        ((${query.to}::timestamptz - interval '1 microsecond') AT TIME ZONE 'UTC')::date,
+        interval '1 day'
+      ) AS d
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM rollup_coverage c
+        WHERE c.project_id = ${query.projectId}::uuid
+          AND c.day = d::date
+      )
+    ) AS covered
+  `);
+
+  return row?.covered === true;
 }
 
 function assertBucketBudget(query: TimeseriesQuery): void {
@@ -234,17 +286,29 @@ export async function timeseries(
   assertBucketBudget(query);
 
   const step = INTERVAL_STEP[query.interval];
-  const useRollup = canUseRollup(query);
+  const useRollup = await canUseRollup(query);
 
   // A régua é a mesma nos dois caminhos. O limite superior desconta um
   // microssegundo porque `to` é exclusivo: sem isso, um intervalo fechado num
   // limite exato de dia geraria um período vazio a mais no fim.
+  // A régua sai de `from` e `to` como o cliente os escreveu, sem converter de
+  // fuso. É uma decisão de produto, e a alternativa é pior.
+  //
+  // Antes a régua convertia os limites para o fuso pedido. O efeito aparece no
+  // exemplo do próprio README: pedir `from=2026-07-01`, `to=2026-08-01` com
+  // `timezone=America/Sao_Paulo` devolvia um período de 30 de JUNHO, porque
+  // 1º de julho 00:00 UTC é 30 de junho 21:00 em São Paulo. Quem pediu julho
+  // recebia junho na primeira linha do gráfico.
+  //
+  // `from` e `to` nomeiam os dias; `timezone` diz onde cai a fronteira do dia.
+  // A conversão de fuso continua acontecendo onde importa — na agregação, que
+  // é quem decide em qual período cada evento cai.
   const series = sql`
     SELECT generate_series(
-      date_trunc(${query.interval}, ${query.from}::timestamptz AT TIME ZONE ${query.timezone}),
+      date_trunc(${query.interval}, ${query.from}::timestamptz AT TIME ZONE 'UTC'),
       date_trunc(
         ${query.interval},
-        (${query.to}::timestamptz - interval '1 microsecond') AT TIME ZONE ${query.timezone}
+        (${query.to}::timestamptz - interval '1 microsecond') AT TIME ZONE 'UTC'
       ),
       ${step}::interval
     ) AS bucket
@@ -380,15 +444,29 @@ export async function breakdown(query: BreakdownQuery & Scoped): Promise<Breakdo
         row_number() OVER (ORDER BY events DESC, value ASC) AS position,
         (sum(events) OVER ())::bigint                       AS grand_total
       FROM aggregated
+    ),
+    grouped AS (
+      SELECT
+        CASE WHEN position <= ${query.limit} THEN value ELSE ${OTHER_LABEL} END AS value,
+        sum(events)::bigint AS events,
+        (CASE WHEN min(position) <= ${query.limit} THEN max(visitors) END)::bigint AS visitors,
+        ROUND(100.0 * sum(events) / NULLIF(max(grand_total), 0), 2)::float8 AS share
+      FROM ranked
+      GROUP BY 1
     )
-    SELECT
-      CASE WHEN position <= ${query.limit} THEN value ELSE ${OTHER_LABEL} END AS value,
-      sum(events)::bigint AS events,
-      (CASE WHEN min(position) <= ${query.limit} THEN max(visitors) END)::bigint AS visitors,
-      ROUND(100.0 * sum(events) / NULLIF(max(grand_total), 0), 2)::float8 AS share
-    FROM ranked
-    GROUP BY 1
-    ORDER BY events DESC, value ASC
+    SELECT value, events, visitors, share
+    FROM grouped
+    -- "Outros" sai sempre por último, mesmo empatado em eventos com uma linha
+    -- real. Sem o primeiro critério, o desempate alfabético jogava a
+    -- linha-agregado para o meio do ranking: com US e Outros empatados em 3,
+    -- "O" vem antes de "U" e o resultado saía BR, Outros, US. "Outros" não
+    -- disputa posição com ninguém — ele é o resto.
+    --
+    -- A ordenação precisa da CTE grouped em vez de vir junto do GROUP BY:
+    -- dentro de uma expressão do ORDER BY, o value resolve para a coluna de
+    -- ENTRADA (ranked.value), não para o apelido de saída, e o Postgres recusa
+    -- com "coluna ranked.value deve aparecer na cláusula GROUP BY".
+    ORDER BY (value = ${OTHER_LABEL}) ASC, events DESC, value ASC
   `);
 }
 
@@ -487,7 +565,11 @@ export async function funnel(query: FunnelQuery & Scoped): Promise<FunnelStep[]>
       SELECT e.anonymous_id, e.name, e.occurred_at
       FROM events e
       WHERE ${baseConditions(query, { ignoreEvent: true })}
-        AND e.name = ANY(${steps}::text[])
+        -- sql.param liga o array como UM parametro. Sem ele, o Drizzle expande
+        -- a lista em uma tupla - ANY(($4, $5, $6)::text[]) - e o Postgres
+        -- recusa: "nao e possivel converter o tipo de dados record para
+        -- text[]". O endpoint respondia 500.
+        AND e.name = ANY(${sql.param(steps)}::text[])
     ),
     ${sql.join(stepCtes, sql`, `)}
     ${sql.join(stepSelects, sql` UNION ALL `)}

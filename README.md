@@ -420,10 +420,41 @@ decisões que mais importam (ordem do índice composto, escopo da pré-agregaç�
 > A tabela de resultados desse documento ainda está com `_a medir_`: o benchmark
 > precisa rodar sobre a massa do seed para ser preenchido.
 
-O rollup diário só é usado quando é **honesto** usá-lo — granularidade ≥ dia,
-fuso UTC, métrica diferente de `sessions`, únicos apenas em granularidade de dia
+O rollup diário só é usado quando é **honesto** usá-lo. São duas perguntas
+diferentes, e as duas precisam ser respondidas com sim.
+
+A primeira é sobre o **formato** da pergunta: granularidade ≥ dia, fuso UTC,
+métrica diferente de `sessions`, únicos apenas em granularidade de dia
 (visitantes únicos não são somáveis) e sem filtro por dimensão que ele não tem.
-Fora dessas condições, a consulta vai para a tabela bruta.
+Fora dessas condições ele mentiria por construção.
+
+A segunda é sobre os **dados**: o rollup tem esse período processado? A tabela
+`rollup_coverage` registra todo dia que a pré-agregação percorreu, inclusive os
+dias que não tiveram evento nenhum — e é essa distinção que importa. Olhar só as
+linhas de `daily_event_rollup` não serviria, porque a ausência de linha lá é
+ambígua entre "nunca processado" e "processado e vazio", e as duas situações
+pedem respostas opostas.
+
+Sem essa segunda verificação, um rollup vazio ou atrasado devolvia **zeros**, sem
+erro e sem aviso: o gráfico mostrava um período sem tráfego que na verdade estava
+cheio de eventos. Na dúvida, a consulta cai para a tabela bruta — mais lento e
+certo é melhor que rápido e errado.
+
+### `from`, `to` e `timezone`
+
+`from` e `to` nomeiam os períodos; `timezone` diz onde cai a fronteira do dia.
+Pedir `from=2026-07-01`, `to=2026-08-01` com `timezone=America/Sao_Paulo`
+devolve os dias de julho agrupados pela meia-noite de São Paulo — e não um
+período de 30 de junho, que é o que sairia se os limites fossem convertidos de
+fuso antes de virarem a régua do gráfico.
+
+> **Limitação conhecida.** O filtro de período (`WHERE occurred_at >= from AND
+> < to`) é aplicado sobre instantes, não sobre a fronteira local do dia. Num
+> fuso diferente de UTC, isso deixa o último período do intervalo incompleto
+> pela diferença do fuso — três horas, no caso de São Paulo. Os períodos do meio
+> são exatos. Resolver isso significa converter `from` e `to` para o fuso pedido
+> em todos os relatórios, e não só na série temporal; está na lista de
+> melhorias.
 
 ## Decisões e trade-offs
 
@@ -445,6 +476,7 @@ Fora dessas condições, a consulta vai para a tabela bruta.
 - [ ] SDK JavaScript de ingestão, com fila e reenvio usando `idempotencyKey`
 - [ ] Painel web consumindo os relatórios
 - [ ] Exportação em CSV dos relatórios
+- [ ] Aplicar `from`/`to` na fronteira local do dia em todos os relatórios, não só na régua da série temporal
 
 ## Licença
 
