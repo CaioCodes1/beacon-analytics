@@ -21,9 +21,6 @@ const TOTAL_EVENTS = Number(process.env.SEED_EVENTS ?? 2_000_000);
 const VISITOR_POOL = Number(process.env.SEED_VISITORS ?? 25_000);
 const DAYS_BACK = 90;
 
-/** Etapas do funil, em ordem. A profundidade da sessão decide até onde vai. */
-const FUNNEL = ['page_view', 'product_view', 'add_to_cart', 'checkout_started', 'purchase'];
-
 /** Média de eventos por sessão, dada a distribuição de profundidade abaixo. */
 const AVG_DEPTH = 0.4 * 1 + 0.25 * 2 + 0.17 * 3 + 0.11 * 4 + 0.07 * 5;
 
@@ -135,6 +132,7 @@ async function insertSessionBatch(projectId: string, sessionCount: number): Prom
     )
     SELECT
       ${projectId}::uuid,
+      -- Etapas do funil, em ordem. A profundidade da sessão decide até onde vai.
       (ARRAY['page_view','product_view','add_to_cart','checkout_started','purchase'])[step],
       s.started_at + (step * (random() * interval '3 minutes')),
       now(),
